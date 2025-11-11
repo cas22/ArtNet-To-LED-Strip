@@ -1,25 +1,16 @@
-#include <Arduino.h>
-#include <NeoPixelBus.h>
-#include <ETH.h>
-#include <ArtnetETH.h>
-#include <NetworkClient.h>
-#include <HTTPClient.h>
-#include <Update.h>
-
-// All configuration is located in main.h
 #include <main.h>
 
 ArtnetETHReceiver artnet;
 NeoPixelBus<RGB_ORDER, STRIP_TYPE> strip(NUM_PIXELS, DATA_PIN);
 
 /*
-	Dado que cada pixel tiene 3 canales de DMX, no podemos usar todos los canales porque DMX soporta 512 canales,
-	que no es divisoble entre 3, haciendo que nos sobren 2 canales.
-	Por tanto trabajamos con 510 canales y, debido a como funciona la liberia de ArtNet, le restamos uno ya que 
-	el vector empieza en 0.
+	Since each pixel has 3 DMX channels, we cannot use all channels, because DMX supports 512 channels
+	which is not divisible by 3, leaving us with 2 unused channels.
+	Therefore, we work with 510 channels and due to how the ArtNet library works, we subtract one since
+	the vector starts at 0.
 	
-	510 / 3 = 170, que se multiplica por el universo para calcular en que LED estamos cuando estamos en un
-	universo != 0.
+	510 / 3 = 170, which is multiplied by the universe to calculate which LED we are at when we are in a
+	universe != 0.
 */
 
 #if GROUP_LED == 1 
@@ -44,8 +35,69 @@ void onArtNetFrame(const uint8_t* data, const uint16_t size, const art_net::art_
 }
 #endif
 
-static bool eth_connected = false;
+void setup() {
+	Serial.begin(115200);
+	Serial.println("[Info] Current version: " + String(VERSION));
 
+	// NeoPixelBus setup
+	Serial.println("[NeoPixelBus] Starting using pin " + String(DATA_PIN));
+	strip.Begin();
+	Serial.printf("[NeoPixelBus] Started %d pixels", NUM_PIXELS);
+  strip.Show();
+
+	uint8_t animBrightness = 0;
+	Network.onEvent(onEvent);
+	ETH.begin();
+	while(!eth_connected) {
+		delay(20);
+		fill_ledstrip(RgbColor(animBrightness));
+		animBrightness = (animBrightness == 250) ? 0 : animBrightness+1;
+	}
+	fill_ledstrip(RgbColor(0,255,0));
+	Serial.println("\n[ETH] Connected to the network");
+
+	Serial.println("\n[OTA] Checking if updates are available");
+    checkAndUpdate();
+
+	Serial.println("\n[ArtNet] setArtPollReplyConfig");
+	artnet.setArtPollReplyConfigShortName(ARTNET_ShortName);
+	artnet.setArtPollReplyConfigLongName(ARTNET_LongName);
+	artnet.setArtPollReplyConfigNodeReport(ARTNET_NodeReport);
+	stars_ledstrip(200, 10);
+
+	Serial.println("\n[ArtNet] Starting");
+	artnet.begin();
+
+	Serial.println("[ArtNet] Subscribing to Universes");
+	artnet.subscribeArtDmx(onArtNetFrame);
+
+	Serial.printf("[Info] Free Heap %d out of %d", ESP.getFreeHeap(), ESP.getHeapSize());
+}
+
+void loop() {	
+	artnet.parse();
+}
+
+
+/*----- LED Strip Helpers -----*/
+void fill_ledstrip(RgbColor color){
+	for(size_t i = 0; i<NUM_PIXELS; i++){
+		strip.SetPixelColor(i, color);
+	}
+	strip.Show();
+}
+
+void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency){
+	for(size_t i = 0; i<NUM_PIXELS; i++){
+		if(random(0,starFrequency) == starFrequency) {
+			strip.SetPixelColor(i, RgbColor(random(0,colorMax)));
+		}
+	}
+	strip.Show();
+}
+
+
+/*----- Network -----*/
 void onEvent(arduino_event_id_t event) {
   switch (event) {
     case ARDUINO_EVENT_ETH_START:
@@ -71,6 +123,8 @@ void onEvent(arduino_event_id_t event) {
   }
 }
 
+
+/*----- OTA -----*/
 void checkAndUpdate() {
 	HTTPClient http;
 	// Step 1: Check version
@@ -138,67 +192,4 @@ void checkAndUpdate() {
 		Serial.println("[OTA] Firmware not available. HTTP Code: " + String(httpCode));
 	}
 	http.end();
-}
-
-
-void setup() {
-	Serial.begin(115200);
-	Serial.println("[Info] Current version: " + String(VERSION));
-
-	// NeoPixelBus setup
-	Serial.println("[NeoPixelBus] Starting using pin " + String(DATA_PIN));
-	strip.Begin();
-	Serial.printf("[NeoPixelBus] Started %d pixels", NUM_PIXELS);
-    strip.Show();
-
-	uint8_t animBrightness = 0;
-	Network.onEvent(onEvent);
-	ETH.begin();
-	while(!eth_connected) {
-		delay(20);
-		fill_ledstrip(RgbColor(animBrightness));
-		animBrightness = (animBrightness == 250) ? 0 : animBrightness+1;
-	}
-	fill_ledstrip(RgbColor(0,255,0));
-	Serial.println("\n[ETH] Connected to the network");
-
-	Serial.println("\n[OTA] Checking if updates are available");
-    checkAndUpdate();
-
-	Serial.println("\n[ArtNet] setArtPollReplyConfig");
-	artnet.setArtPollReplyConfigShortName(ARTNET_ShortName);
-	artnet.setArtPollReplyConfigLongName(ARTNET_LongName);
-	artnet.setArtPollReplyConfigNodeReport(ARTNET_NodeReport);
-	stars_ledstrip(200, 10);
-
-	Serial.println("\n[ArtNet] Starting");
-	artnet.begin();
-
-	Serial.println("[ArtNet] Subscribing to Universes");
-	artnet.subscribeArtDmx(onArtNetFrame);
-
-	Serial.printf("[Info] Free Heap %d out of %d", ESP.getFreeHeap(), ESP.getHeapSize());
-}
-
-void loop() {	
-	artnet.parse();
-}
-
-
-// Helpers
-
-void fill_ledstrip(RgbColor color){
-	for(size_t i = 0; i<NUM_PIXELS; i++){
-		strip.SetPixelColor(i, color);
-	}
-	strip.Show();
-}
-
-void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency){
-	for(size_t i = 0; i<NUM_PIXELS; i++){
-		if(random(0,starFrequency) == starFrequency) {
-			strip.SetPixelColor(i, RgbColor(random(0,colorMax)));
-		}
-	}
-	strip.Show();
 }
