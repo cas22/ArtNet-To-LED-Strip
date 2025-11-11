@@ -1,8 +1,5 @@
 #include <main.h>
 
-ArtnetETHReceiver artnet;
-NeoPixelBus<RGB_ORDER, STRIP_TYPE> strip(NUM_PIXELS, DATA_PIN);
-
 /*
 	Since each pixel has 3 DMX channels, we cannot use all channels, because DMX supports 512 channels
 	which is not divisible by 3, leaving us with 2 unused channels.
@@ -45,19 +42,10 @@ void setup() {
 	Serial.printf("[NeoPixelBus] Started %d pixels", NUM_PIXELS);
   strip.Show();
 
-	uint8_t animBrightness = 0;
-	Network.onEvent(onEvent);
-	ETH.begin();
-	while(!eth_connected) {
-		delay(20);
-		fill_ledstrip(RgbColor(animBrightness));
-		animBrightness = (animBrightness == 250) ? 0 : animBrightness+1;
-	}
-	fill_ledstrip(RgbColor(0,255,0));
-	Serial.println("\n[ETH] Connected to the network");
+  setup_network();
 
 	Serial.println("\n[OTA] Checking if updates are available");
-    checkAndUpdate();
+  checkAndUpdate();
 
 	Serial.println("\n[ArtNet] setArtPollReplyConfig");
 	artnet.setArtPollReplyConfigShortName(ARTNET_ShortName);
@@ -96,33 +84,62 @@ void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency){
 	strip.Show();
 }
 
-
 /*----- Network -----*/
-void onEvent(arduino_event_id_t event) {
-  switch (event) {
-    case ARDUINO_EVENT_ETH_START:
-      Serial.println("[ETH] Started");
-      ETH.setHostname(ETH_HOST_NAME);
-      break;
-    case ARDUINO_EVENT_ETH_CONNECTED: 
-	  Serial.println("[ETH] Connected");
-	  break;
-    case ARDUINO_EVENT_ETH_GOT_IP:
-      Serial.println("[ETH] Got IP " + String(ETH.localIP()));
-      eth_connected = true;
-      break;
-    case ARDUINO_EVENT_ETH_DISCONNECTED:
-      Serial.println("[ETH] Disconnected");
-      eth_connected = false;
-      break;
-    case ARDUINO_EVENT_ETH_STOP:
-      Serial.println("[ETH] Stopped");
-      eth_connected = false;
-      break;
-    default: break;
-  }
+#ifdef wt32eth01
+void setup_network() {
+  uint8_t animBrightness = 0;
+	Network.onEvent(onEvent);
+	ETH.begin();
+	while(!eth_connected) {
+		delay(20);
+		fill_ledstrip(RgbColor(animBrightness));
+		animBrightness = (animBrightness == 250) ? 0 : animBrightness+1;
+	}
+	fill_ledstrip(RgbColor(0,255,0));
+	Serial.println("\n[ETH] Connected to the network");
 }
 
+void onEvent(arduino_event_id_t event) {
+  switch (event) {
+  case ARDUINO_EVENT_ETH_START:
+    Serial.println("[ETH] Started");
+    ETH.setHostname(ETH_HOST_NAME);
+    break;
+  case ARDUINO_EVENT_ETH_CONNECTED:
+    Serial.println("[ETH] Connected");
+    break;
+  case ARDUINO_EVENT_ETH_GOT_IP:
+    Serial.println("[ETH] Got IP " + String(ETH.localIP()));
+    eth_connected = true;
+    break;
+  case ARDUINO_EVENT_ETH_DISCONNECTED:
+    Serial.println("[ETH] Disconnected");
+    eth_connected = false;
+    break;
+  case ARDUINO_EVENT_ETH_STOP:
+    Serial.println("[ETH] Stopped");
+    eth_connected = false;
+    break;
+  default:
+    break;
+  }
+}
+#endif
+
+#ifdef esp32
+    void setup_network() {
+        uint8_t animBrightness = 0;
+        WiFi.begin(ssid, pwd);
+        WiFi.config(ip, gateway, subnet_mask);
+        while(WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        fill_ledstrip(RgbColor(animBrightness));
+        animBrightness = (animBrightness == 250) ? 0 : animBrightness+1;
+        }
+        fill_ledstrip(RgbColor(0,255,0));
+        Serial.printf("\n[WiFi] Connected to the network with IP: %d", WiFi.localIP());
+    }
+#endif
 
 /*----- OTA -----*/
 void checkAndUpdate() {

@@ -56,3 +56,12 @@
 #define STRIP_TYPE NeoWs2812xMethod
 
 #endif
+
+// WiFi Setup
+#ifdef esp32
+	const char* ssid = "your-ssid";
+	const char* pwd = "your-password";
+	const IPAddress ip(192, 168, 1, 201);
+	const IPAddress gateway(192, 168, 1, 1);
+	const IPAddress subnet_mask(255, 255, 255, 0);
+#endif
