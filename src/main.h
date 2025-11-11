@@ -9,6 +9,10 @@
 #include <Update.h>
 #include <const.h>
 
+#if ((NUM_PIXELS / GROUP_LED) * 3) % 510 != 0
+    #warning The last DMX universe is NOT getting completely used! Check if making groups smaller helps. (This warning can be ignored if this behaviour is intended)
+#endif
+
 #pragma message("firmware_url is set to: " firmware_url)
 
 NeoPixelBus<RGB_ORDER, STRIP_TYPE> strip(NUM_PIXELS, DATA_PIN);

@@ -37,6 +37,7 @@
 
 	NUM_PIXELS: How many LEDs the strip has (*)
 	GROUP_LED: For every 3 DMX channels, how many LEDs we want to control
+	START_UNIVERSE: Starting universe for ArtNet (0 is the first universe)
 	DATA_PIN: The pin to which the LED strip is connected
 	RGB_ORDER: If the LED strip has swapped color order, we can change it (RGB, GRB, BGR...)
 	STRIP_TYPE: Type of LED strip we're using
@@ -51,11 +52,10 @@
 
 #define NUM_PIXELS 626
 #define GROUP_LED 1
+#define START_UNIVERSE 0 // NOT IMPLEMENTED YET
 #define DATA_PIN 2
 #define RGB_ORDER NeoGrbFeature
 #define STRIP_TYPE NeoWs2812xMethod
-
-#endif
 
 // WiFi Setup
 #ifdef esp32
@@ -64,4 +64,6 @@
 	const IPAddress ip(192, 168, 1, 201);
 	const IPAddress gateway(192, 168, 1, 1);
 	const IPAddress subnet_mask(255, 255, 255, 0);
+#endif
+
 #endif
