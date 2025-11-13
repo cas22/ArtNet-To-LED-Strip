@@ -1,23 +1,20 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-// Basic includes
 #include <Arduino.h>
 #include <NeoPixelBus.h>
 #include <NetworkClient.h>
 #include <HTTPClient.h>
 #include <Update.h>
+#include <Preferences.h>
 #include <const.h>
 
-#if ((NUM_PIXELS / GROUP_LED) * 3) % 510 != 0
-    #warning The last DMX universe is NOT getting completely used! Check if making groups smaller helps. (This warning can be ignored if this behaviour is intended)
-#endif
+// NeoPixelBus pointer (will be initialized later)
+NeoPixelBus<RGB_ORDER, STRIP_TYPE>* strip;
 
-#pragma message("firmware_url is set to: " firmware_url)
+Preferences preferences;
 
-NeoPixelBus<RGB_ORDER, STRIP_TYPE> strip(NUM_PIXELS, DATA_PIN);
-
-// Conditional setup depending on the env
+// Conditional setup depending on the enviroment
 #ifdef wt32eth01
     #include <ETH.h>
     #include <ArtnetETH.h>
@@ -39,6 +36,12 @@ void checkAndUpdate();
 
 void fill_ledstrip(RgbColor color);
 void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency);
+
 void setup_network();
+
+void loadSettings();
+void saveSettings();
+
+#pragma message("firmware_url is set to: " firmware_url "\tAnd version_url: " version_url)
 
 #endif // MAIN_H

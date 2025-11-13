@@ -6,7 +6,7 @@
 
 		· OTA Setup
 		
-			BASE_URL: The base of the URL where the OTA files are located
+			BASE_URL: The base of the URL where the OTA files are located (Not required)
             firmware_url: The URL where we can find the .bin to update the ESP
 			version_url: The URL where we can find the file which contains the current version of the firmware located
 					     on the OTA server, which is used to check if the ESP needs to be updated
@@ -20,10 +20,11 @@
 */
 
 #define BASE_URL "https://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
-
-#define firmware_url BASE_URL "/firmware.bin"
-#define version_url BASE_URL "/version.txt"
-
+struct OTADeviceSettings {
+	const char* firmware_url = BASE_URL "/firmware.bin";
+	const char* version_url = BASE_URL "/version.txt";
+};
+OTADeviceSettings OTASettings;
 
 #define ETH_HOST_NAME "ESP_ArtNet"
 #define ARTNET_ShortName "ESP_ArtNet"
@@ -35,10 +36,10 @@
 /* 
 	LED Strip Setup:
 
-	NUM_PIXELS: How many LEDs the strip has (*)
-	GROUP_LED: For every 3 DMX channels, how many LEDs we want to control
-	START_UNIVERSE: Starting universe for ArtNet (0 is the first universe)
-	DATA_PIN: The pin to which the LED strip is connected
+	numPixels: How many LEDs the strip has (*)
+	groupLED: For every 3 DMX channels, how many LEDs we want to control
+	startUniverse: Starting universe for ArtNet (0 is the first universe)
+	dataPin: The pin to which the LED strip is connected
 	RGB_ORDER: If the LED strip has swapped color order, we can change it (RGB, GRB, BGR...)
 	STRIP_TYPE: Type of LED strip we're using
 
@@ -50,20 +51,38 @@
 			with GROUP_LED, while the former is determined by the instructions above.
 */
 
-#define NUM_PIXELS 626
-#define GROUP_LED 1
-#define START_UNIVERSE 0 // NOT IMPLEMENTED YET
-#define DATA_PIN 2
+struct DeviceSettings {
+    int numPixels = 626;
+	int groupLED = 1; 
+	int startUniverse = 0; 
+    int dataPin = 2; 
+    bool isConfigured = false; // Flag to check if settings have been saved before
+};
+DeviceSettings Settings;
+
 #define RGB_ORDER NeoGrbFeature
 #define STRIP_TYPE NeoWs2812xMethod
 
-// WiFi Setup
-#ifdef esp32
-	const char* ssid = "your-ssid";
-	const char* pwd = "your-password";
-	const IPAddress ip(192, 168, 1, 201);
-	const IPAddress gateway(192, 168, 1, 1);
-	const IPAddress subnet_mask(255, 255, 255, 0);
-#endif
+/*
+	WiFi Setup:
 
+	ssid: Your WiFi network's name
+	pwd: Your WiFi network's password
+
+	ip: The static IP address of the ESP
+	gateway: Your router's IP address
+	subnet_mask: The IP mask of your network
+*/
+
+#ifdef esp32
+	struct WiFiDeviceSettings {
+		const char* ssid = "your-ssid";
+		const char* pwd = "your-password";
+
+		IPAddress ip = IPAddress(192, 168, 1, 201);
+		IPAddress gateway = IPAddress(192, 168, 1, 1);
+		IPAddress subnet_mask = IPAddress(255, 255, 255, 0);
+	};
+	WiFiDeviceSettings WiFiSettings;
+#endif
 #endif

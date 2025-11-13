@@ -10,43 +10,50 @@
 	universe != 0.
 */
 
-#if GROUP_LED == 1
+
 void onArtNetFrame(const uint8_t *data, const uint16_t size, const art_net::art_dmx::Metadata &metadata, const art_net::RemoteInfo &remote)
 {
 	int ledpos = metadata.universe * 170;
-	for (size_t i = 0; i <= 509 && ledpos < NUM_PIXELS; i += 3)
+	for (size_t i = 0; i <= 509 && ledpos < Settings.numPixels; i += 3)
 	{
-		strip.SetPixelColor(ledpos, RgbColor(data[i], data[i + 1], data[i + 2]));
+		strip->SetPixelColor(ledpos, RgbColor(data[i], data[i + 1], data[i + 2]));
 		ledpos++;
 	}
-	strip.Show();
+	strip->Show();
 }
-#else
-void onArtNetFrame(const uint8_t *data, const uint16_t size, const art_net::art_dmx::Metadata &metadata, const art_net::RemoteInfo &remote)
+
+void onArtNetFrameGroup(const uint8_t *data, const uint16_t size, const art_net::art_dmx::Metadata &metadata, const art_net::RemoteInfo &remote)
 {
 	int ledpos = metadata.universe * (170);
-	for (size_t i = 0; i <= 509 && ledpos < NUM_PIXELS; i += 3)
+	for (size_t i = 0; i <= 509 && ledpos < Settings.numPixels; i += 3)
 	{
-		for (size_t j = 1; j <= GROUP_LED; j++)
+		for (size_t j = 1; j <= Settings.groupLED && ledpos < Settings.numPixels; j++)
 		{
-			strip.SetPixelColor(ledpos, RgbColor(data[i], data[i + 1], data[i + 2]));
+			strip->SetPixelColor(ledpos, RgbColor(data[i], data[i + 1], data[i + 2]));
 			ledpos++;
 		}
 	}
-	strip.Show();
+	strip->Show();
 }
-#endif
+
 
 void setup()
 {
 	Serial.begin(115200);
 	Serial.println("[Info] Current version: " + String(VERSION));
 
+	loadSettings();
+
 	// NeoPixelBus setup
-	Serial.println("[NeoPixelBus] Starting using pin " + String(DATA_PIN));
-	strip.Begin();
-	Serial.printf("[NeoPixelBus] Started %d pixels", NUM_PIXELS);
-	strip.Show();
+	strip = new NeoPixelBus<RGB_ORDER, STRIP_TYPE>(
+        Settings.numPixels, 
+        Settings.dataPin
+    );
+
+	Serial.println("[NeoPixelBus] Starting using pin " + String(Settings.dataPin));
+	strip->Begin();
+	Serial.printf("[NeoPixelBus] Started %d pixels", Settings.numPixels);
+	strip->Show();
 
 	setup_network();
 
@@ -63,7 +70,12 @@ void setup()
 	artnet.begin();
 
 	Serial.println("[ArtNet] Subscribing to Universes");
-	artnet.subscribeArtDmx(onArtNetFrame);
+	if (Settings.groupLED == 1) {
+		artnet.subscribeArtDmx(onArtNetFrame);
+	} else {
+		artnet.subscribeArtDmx(onArtNetFrameGroup);
+	}
+	
 
 	Serial.printf("[Info] Free Heap %d out of %d", ESP.getFreeHeap(), ESP.getHeapSize());
 }
@@ -76,23 +88,23 @@ void loop()
 /*----- LED Strip Helpers -----*/
 void fill_ledstrip(RgbColor color)
 {
-	for (size_t i = 0; i < NUM_PIXELS; i++)
+	for (size_t i = 0; i < Settings.numPixels; i++)
 	{
-		strip.SetPixelColor(i, color);
+		strip->SetPixelColor(i, color);
 	}
-	strip.Show();
+	strip->Show();
 }
 
 void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency)
 {
-	for (size_t i = 0; i < NUM_PIXELS; i++)
+	for (size_t i = 0; i < Settings.numPixels; i++)
 	{
 		if (random(0, starFrequency) == starFrequency)
 		{
-			strip.SetPixelColor(i, RgbColor(random(0, colorMax)));
+			strip->SetPixelColor(i, RgbColor(random(0, colorMax)));
 		}
 	}
-	strip.Show();
+	strip->Show();
 }
 
 /*----- Network -----*/
@@ -145,8 +157,8 @@ void onEvent(arduino_event_id_t event)
 void setup_network()
 {
 	uint8_t animBrightness = 0;
-	WiFi.begin(ssid, pwd);
-	WiFi.config(ip, gateway, subnet_mask);
+	WiFi.begin(WiFiSettings.ssid, WiFiSettings.pwd);
+	WiFi.config(WiFiSettings.ip, WiFiSettings.gateway, WiFiSettings.subnet_mask);
 	while (WiFi.status() != WL_CONNECTED)
 	{
 		delay(500);
@@ -155,6 +167,7 @@ void setup_network()
 	}
 	fill_ledstrip(RgbColor(0, 255, 0));
 	Serial.printf("\n[WiFi] Connected to the network with IP: %d", WiFi.localIP());
+	Serial.printf("[WiFi] Provided IP was: %d", WiFiSettings.ip);
 }
 #endif
 
@@ -163,7 +176,7 @@ void checkAndUpdate()
 {
 	HTTPClient http;
 	// Step 1: Check version
-	http.begin(version_url);
+	http.begin(OTASettings.version_url);
 	int versionCode = http.GET();
 	if (versionCode == HTTP_CODE_OK)
 	{
@@ -193,7 +206,7 @@ void checkAndUpdate()
 	http.end();
 
 	// Step 2: Get Firmware
-	http.begin(firmware_url);
+	http.begin(OTASettings.firmware_url);
 	int httpCode = http.GET();
 
 	if (httpCode == HTTP_CODE_OK)
@@ -241,4 +254,58 @@ void checkAndUpdate()
 		Serial.println("[OTA] Firmware not available. HTTP Code: " + String(httpCode));
 	}
 	http.end();
+}
+
+/*----- Preferences -----*/
+void loadSettings() {
+    preferences.begin("device-config", false);
+
+    // Load each setting with a default fallback
+    Settings.isConfigured = preferences.getBool("configured", false);
+
+    if (Settings.isConfigured) {
+        Serial.println("[Preferences] Loading saved settings...");
+        Settings.numPixels = preferences.getInt("num-pixels", Settings.numPixels);
+        Settings.dataPin = preferences.getInt("data-pin", Settings.dataPin);
+		Settings.groupLED = preferences.getInt("group-led", Settings.groupLED);
+		Settings.startUniverse = preferences.getInt("start-universe", Settings.startUniverse);
+		#ifdef esp32
+			WiFiSettings.ssid = preferences.getString("wifi-ssid", WiFiSettings.ssid).c_str();
+			WiFiSettings.pwd = preferences.getString("wifi-pwd", WiFiSettings.pwd).c_str();
+			WiFiSettings.ip = IPAddress(preferences.getUInt("wifi-ip", WiFiSettings.ip));
+			WiFiSettings.gateway = IPAddress(preferences.getUInt("wifi-gateway", WiFiSettings.gateway));
+			WiFiSettings.subnet_mask = IPAddress(preferences.getUInt("wifi-subnet", WiFiSettings.subnet_mask));
+		#endif
+    } else {
+        Serial.println("[Preferences] First run! Using default settings.");
+        // Defaults are already set in the structure definition
+        saveSettings(); 
+    }
+
+    preferences.end(); // Close the Preferences
+}
+
+void saveSettings() {
+    preferences.begin("device-config", false);
+
+    // Save each setting
+    preferences.putInt("num-pixels", Settings.numPixels);
+    preferences.putInt("data-pin", Settings.dataPin);
+	preferences.putInt("group-led", Settings.groupLED);
+    preferences.putInt("start-universe", Settings.startUniverse);
+
+	#ifdef esp32
+		preferences.putString("wifi-ssid", String(WiFiSettings.ssid));
+		preferences.putString("wifi-pwd", String(WiFiSettings.pwd));
+		preferences.putUInt("wifi-ip", (uint32_t)WiFiSettings.ip);
+		preferences.putUInt("wifi-gateway", (uint32_t)WiFiSettings.gateway);
+		preferences.putUInt("wifi-subnet", (uint32_t)WiFiSettings.subnet_mask);
+	#endif
+
+    // Mark as configured after initial save
+    preferences.putBool("configured", true); 
+    Settings.isConfigured = true;
+
+    preferences.end();
+    Serial.println("[Preferences] Settings saved successfully.");
 }
