@@ -29,7 +29,7 @@ A lightweight ESP-based controller that receives **ArtNet** DMX data over Ethern
 - Arduino IDE or PlatformIO
 - ESP32 board support
 - Libraries:
-  - [NeoPixelBus](https://github.com/makuna/NeoPixelBus)
-  - [Artnet](https://github.com/hideakitai/ArtNet)
+  - [NeoPixelBus](https://github.com/makuna/NeoPixelBus) (Tested with 2.8.3)
+  - [Artnet](https://github.com/hideakitai/ArtNet) (Tested with 0.9.2)
 
 ---
