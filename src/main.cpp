@@ -21,15 +21,17 @@ void onArtNetFrame(const uint8_t *data, const uint16_t size, const art_net::art_
 	}
 	strip->Show();
 
-	#ifdef DEBUG
+	#ifdef MAIN_DEBUG
 	// Calculate FPS
 	frameTime = millis() - lastTime;
 	frames++;
 
 	if (frameTime >= 1000) { // After 1 second, print the FPS
 		float fps = frames / (frameTime / 1000.0);
-		Serial.print("\nFPS: ");
-		Serial.println(fps);
+		WebSerial.print("\n");
+		WebSerial.print(metadata.universe);
+		WebSerial.print(" FPS: ");
+		WebSerial.println(fps);
 		if(fps>=40.0){
 			digitalWrite(2, HIGH);
 		} else {
@@ -60,7 +62,7 @@ void onArtNetFrameGroup(const uint8_t *data, const uint16_t size, const art_net:
 void setup()
 {
 	Serial.begin(115200);
-	#ifdef DEBUG
+	#ifdef MAIN_DEBUG
 	pinMode(2, OUTPUT);
 	delay(5000);
 	Serial.println("[Info] DEBUG ON");
@@ -82,6 +84,9 @@ void setup()
 	strip->Show();
 
 	setup_network();
+
+	WebSerial.begin(&server);
+	server.begin();
 
 	Serial.println("\n[OTA] Checking if updates are available");
 	checkAndUpdate();

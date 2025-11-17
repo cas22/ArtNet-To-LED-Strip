@@ -9,10 +9,16 @@
 #include <Preferences.h>
 #include <const.h>
 
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <WebSerial.h>
+
 // NeoPixelBus pointer (will be initialized later)
 NeoPixelBus<RGB_ORDER, STRIP_TYPE>* strip;
 
 Preferences preferences;
+
+AsyncWebServer server(80);
 
 // Conditional setup depending on the enviroment
 #ifdef HAS_ETH
@@ -40,7 +46,7 @@ void setup_network();
 void loadSettings();
 void saveSettings();
 
-#ifdef DEBUG
+#ifdef MAIN_DEBUG
     unsigned long lastTime = 0;
     unsigned long frameTime = 0;
     unsigned long frames = 0;
