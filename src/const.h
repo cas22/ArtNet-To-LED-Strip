@@ -2,35 +2,34 @@
 #define CONST_H
 
 /*
-	Customization
-
-		· OTA Setup
-		
-			BASE_URL: The base of the URL where the OTA files are located (Not required)
-            firmware_url: The URL where we can find the .bin to update the ESP
-			version_url: The URL where we can find the file which contains the current version of the firmware located
-					     on the OTA server, which is used to check if the ESP needs to be updated
-		
-		· Name Reporting
-
-			ETH_HOST_NAME: The host name for the ETH interface to report on your LAN network
-			ARTNET_ShortName: Short name for ArtNet Nodes to display
-			ARTNET_LongName: A longer, more descriptive name for ArtNet Nodes to display
-			ARTNET_NodeReport: Name for the ArtNet Node, usually the sane as the ShortName
+	OTA Setup
+	
+		BASE_URL: The base of the URL where the OTA files are located (Not required)
+		firmware_url: The URL where we can find the .bin to update the ESP
+		version_url: The URL where we can find the file which contains the current version of the firmware located
+						on the OTA server, which is used to check if the ESP needs to be updated
 */
-
-#define BASE_URL "https://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
+#define BASE_URL "http://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
 struct OTADeviceSettings {
 	const char* firmware_url = BASE_URL "/firmware.bin";
 	const char* version_url = BASE_URL "/version.txt";
 };
 OTADeviceSettings OTASettings;
 
-#define ETH_HOST_NAME "ESP_ArtNet"
-#define ARTNET_ShortName "ESP_ArtNet"
-#define ARTNET_LongName "ESP_ArtNet2NeoPixel"
-#define ARTNET_NodeReport "ESP_ArtNet"
 
+/*
+	ArtNet Setup
+
+		shortName: Short name for ArtNet Nodes to display
+		longName: A longer, more descriptive name for ArtNet Nodes to display
+		nodeReport: Name for the ArtNet Node, usually the sane as the ShortName
+*/
+struct ArtNetDeviceSettings {
+	const char* shortName = "ESP_ArtNet";
+	const char* longName = "ESP_ArtNet2NeoPixel";
+	const char* nodeReport = "ESP_ArtNet";
+};
+ArtNetDeviceSettings ArtNetSettings;
 
 
 /* 
@@ -55,7 +54,7 @@ struct DeviceSettings {
     int numPixels = 626;
 	int groupLED = 1; 
 	int startUniverse = 0; 
-    int dataPin = 2; 
+    int dataPin = 4; 
     bool isConfigured = false; // Flag to check if settings have been saved before
 };
 DeviceSettings Settings;
@@ -64,7 +63,9 @@ DeviceSettings Settings;
 #define STRIP_TYPE NeoWs2812xMethod
 
 /*
-	WiFi Setup:
+	LAN/WiFi Setup
+
+	hostName: The hostname for the device on the network
 
 	ssid: Your WiFi network's name
 	pwd: Your WiFi network's password
@@ -74,12 +75,13 @@ DeviceSettings Settings;
 	subnet_mask: The IP mask of your network
 */
 
-#ifdef esp32
+const char* hostName = "ESP_ArtNet";
+#ifndef HAS_ETH
 	struct WiFiDeviceSettings {
-		const char* ssid = "your-ssid";
-		const char* pwd = "your-password";
+		String ssid = "your-ssid";
+		String pwd = "your-password";
 
-		IPAddress ip = IPAddress(192, 168, 1, 201);
+		IPAddress ip = IPAddress(192, 168, 1, 222);
 		IPAddress gateway = IPAddress(192, 168, 1, 1);
 		IPAddress subnet_mask = IPAddress(255, 255, 255, 0);
 	};

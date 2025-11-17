@@ -10,9 +10,9 @@
 	universe != 0.
 */
 
-
 void onArtNetFrame(const uint8_t *data, const uint16_t size, const art_net::art_dmx::Metadata &metadata, const art_net::RemoteInfo &remote)
 {
+	unsigned long currentTime = millis();
 	int ledpos = metadata.universe * 170;
 	for (size_t i = 0; i <= 509 && ledpos < Settings.numPixels; i += 3)
 	{
@@ -20,6 +20,26 @@ void onArtNetFrame(const uint8_t *data, const uint16_t size, const art_net::art_
 		ledpos++;
 	}
 	strip->Show();
+
+	#ifdef DEBUG
+	// Calculate FPS
+	frameTime = millis() - lastTime;
+	frames++;
+
+	if (frameTime >= 1000) { // After 1 second, print the FPS
+		float fps = frames / (frameTime / 1000.0);
+		Serial.print("\nFPS: ");
+		Serial.println(fps);
+		if(fps>=40.0){
+			digitalWrite(2, HIGH);
+		} else {
+			digitalWrite(2, LOW);
+		}
+		// Reset for next measurement period
+		frames = 0;
+		lastTime = millis();
+	}
+	#endif
 }
 
 void onArtNetFrameGroup(const uint8_t *data, const uint16_t size, const art_net::art_dmx::Metadata &metadata, const art_net::RemoteInfo &remote)
@@ -40,6 +60,12 @@ void onArtNetFrameGroup(const uint8_t *data, const uint16_t size, const art_net:
 void setup()
 {
 	Serial.begin(115200);
+	#ifdef DEBUG
+	pinMode(2, OUTPUT);
+	delay(5000);
+	Serial.println("[Info] DEBUG ON");
+	#endif
+
 	Serial.println("[Info] Current version: " + String(VERSION));
 
 	loadSettings();
@@ -52,7 +78,7 @@ void setup()
 
 	Serial.println("[NeoPixelBus] Starting using pin " + String(Settings.dataPin));
 	strip->Begin();
-	Serial.printf("[NeoPixelBus] Started %d pixels", Settings.numPixels);
+	Serial.printf("[NeoPixelBus] Started %d pixels\n", Settings.numPixels);
 	strip->Show();
 
 	setup_network();
@@ -61,9 +87,9 @@ void setup()
 	checkAndUpdate();
 
 	Serial.println("\n[ArtNet] setArtPollReplyConfig");
-	artnet.setArtPollReplyConfigShortName(ARTNET_ShortName);
-	artnet.setArtPollReplyConfigLongName(ARTNET_LongName);
-	artnet.setArtPollReplyConfigNodeReport(ARTNET_NodeReport);
+	artnet.setArtPollReplyConfigShortName(ArtNetSettings.shortName);
+	artnet.setArtPollReplyConfigLongName(ArtNetSettings.longName);
+	artnet.setArtPollReplyConfigNodeReport(ArtNetSettings.nodeReport);
 	stars_ledstrip(200, 10);
 
 	Serial.println("\n[ArtNet] Starting");
@@ -108,7 +134,7 @@ void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency)
 }
 
 /*----- Network -----*/
-#ifdef wt32eth01
+#ifdef HAS_ETH
 void setup_network()
 {
 	uint8_t animBrightness = 0;
@@ -130,7 +156,7 @@ void onEvent(arduino_event_id_t event)
 	{
 	case ARDUINO_EVENT_ETH_START:
 		Serial.println("[ETH] Started");
-		ETH.setHostname(ETH_HOST_NAME);
+		ETH.setHostname(hostName);
 		break;
 	case ARDUINO_EVENT_ETH_CONNECTED:
 		Serial.println("[ETH] Connected");
@@ -151,14 +177,17 @@ void onEvent(arduino_event_id_t event)
 		break;
 	}
 }
-#endif
-
-#ifdef esp32
+#else
 void setup_network()
 {
 	uint8_t animBrightness = 0;
+	Serial.print("[WiFi] Begin\n");
+	Serial.println(WiFiSettings.ssid);
+	Serial.println(WiFiSettings.pwd);
 	WiFi.begin(WiFiSettings.ssid, WiFiSettings.pwd);
+	Serial.println("[WiFi] Config");
 	WiFi.config(WiFiSettings.ip, WiFiSettings.gateway, WiFiSettings.subnet_mask);
+	WiFi.setHostname(hostName);
 	while (WiFi.status() != WL_CONNECTED)
 	{
 		delay(500);
@@ -166,8 +195,10 @@ void setup_network()
 		animBrightness = (animBrightness == 250) ? 0 : animBrightness + 1;
 	}
 	fill_ledstrip(RgbColor(0, 255, 0));
-	Serial.printf("\n[WiFi] Connected to the network with IP: %d", WiFi.localIP());
-	Serial.printf("[WiFi] Provided IP was: %d", WiFiSettings.ip);
+	Serial.print("[WiFi] Connected to the network with IP: ");
+	Serial.println(WiFi.localIP());
+	Serial.print("[WiFi] Provided IP was: ");
+	Serial.println(WiFiSettings.ip);
 }
 #endif
 
@@ -269,9 +300,10 @@ void loadSettings() {
         Settings.dataPin = preferences.getInt("data-pin", Settings.dataPin);
 		Settings.groupLED = preferences.getInt("group-led", Settings.groupLED);
 		Settings.startUniverse = preferences.getInt("start-universe", Settings.startUniverse);
-		#ifdef esp32
-			WiFiSettings.ssid = preferences.getString("wifi-ssid", WiFiSettings.ssid).c_str();
-			WiFiSettings.pwd = preferences.getString("wifi-pwd", WiFiSettings.pwd).c_str();
+		hostName = preferences.getString("host-name", hostName).c_str();
+		#ifndef HAS_ETH
+			WiFiSettings.ssid = preferences.getString("wifi-ssid", WiFiSettings.ssid);
+			WiFiSettings.pwd = preferences.getString("wifi-pwd", WiFiSettings.pwd);
 			WiFiSettings.ip = IPAddress(preferences.getUInt("wifi-ip", WiFiSettings.ip));
 			WiFiSettings.gateway = IPAddress(preferences.getUInt("wifi-gateway", WiFiSettings.gateway));
 			WiFiSettings.subnet_mask = IPAddress(preferences.getUInt("wifi-subnet", WiFiSettings.subnet_mask));
@@ -293,13 +325,14 @@ void saveSettings() {
     preferences.putInt("data-pin", Settings.dataPin);
 	preferences.putInt("group-led", Settings.groupLED);
     preferences.putInt("start-universe", Settings.startUniverse);
+	preferences.putString("host-name", String(hostName));
 
-	#ifdef esp32
-		preferences.putString("wifi-ssid", String(WiFiSettings.ssid));
-		preferences.putString("wifi-pwd", String(WiFiSettings.pwd));
-		preferences.putUInt("wifi-ip", (uint32_t)WiFiSettings.ip);
-		preferences.putUInt("wifi-gateway", (uint32_t)WiFiSettings.gateway);
-		preferences.putUInt("wifi-subnet", (uint32_t)WiFiSettings.subnet_mask);
+	#ifndef HAS_ETH
+		preferences.putString("wifi-ssid", WiFiSettings.ssid);
+		preferences.putString("wifi-pwd", WiFiSettings.pwd);
+		preferences.putUInt("wifi-ip", (IPAddress)WiFiSettings.ip);
+		preferences.putUInt("wifi-gateway", (IPAddress)WiFiSettings.gateway);
+		preferences.putUInt("wifi-subnet", (IPAddress)WiFiSettings.subnet_mask);
 	#endif
 
     // Mark as configured after initial save

@@ -15,15 +15,13 @@ NeoPixelBus<RGB_ORDER, STRIP_TYPE>* strip;
 Preferences preferences;
 
 // Conditional setup depending on the enviroment
-#ifdef wt32eth01
+#ifdef HAS_ETH
     #include <ETH.h>
     #include <ArtnetETH.h>
     ArtnetETHReceiver artnet;
     static bool eth_connected = false;
     void onEvent(arduino_event_id_t event);
-#endif
-
-#ifdef esp32
+#else
     #include <ArtnetWiFi.h>
     ArtnetWiFiReceiver artnet;
 #endif
@@ -42,6 +40,10 @@ void setup_network();
 void loadSettings();
 void saveSettings();
 
-#pragma message("firmware_url is set to: " firmware_url "\tAnd version_url: " version_url)
+#ifdef DEBUG
+    unsigned long lastTime = 0;
+    unsigned long frameTime = 0;
+    unsigned long frames = 0;
+#endif
 
 #endif // MAIN_H
