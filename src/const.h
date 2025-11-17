@@ -9,10 +9,10 @@
 		version_url: The URL where we can find the file which contains the current version of the firmware located
 						on the OTA server, which is used to check if the ESP needs to be updated
 */
-#define BASE_URL "http://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
+#define BASE_URL "http://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/main/builds/" ENV_NAME
 struct OTADeviceSettings {
-	const char* firmware_url = BASE_URL "/firmware.bin";
-	const char* version_url = BASE_URL "/version.txt";
+	String firmware_url = BASE_URL "/firmware.bin";
+	String version_url = BASE_URL "/version.txt";
 };
 OTADeviceSettings OTASettings;
 
@@ -25,9 +25,9 @@ OTADeviceSettings OTASettings;
 		nodeReport: Name for the ArtNet Node, usually the sane as the ShortName
 */
 struct ArtNetDeviceSettings {
-	const char* shortName = "ESP_ArtNet";
-	const char* longName = "ESP_ArtNet2NeoPixel";
-	const char* nodeReport = "ESP_ArtNet";
+	String shortName = "ESP_ArtNet";
+	String longName = "ESP_ArtNet2NeoPixel";
+	String nodeReport = "ESP_ArtNet";
 };
 ArtNetDeviceSettings ArtNetSettings;
 
@@ -75,7 +75,7 @@ DeviceSettings Settings;
 	subnet_mask: The IP mask of your network
 */
 
-const char* hostName = "ESP_ArtNet";
+String hostName = "ESP_ArtNet";
 #ifndef HAS_ETH
 	struct WiFiDeviceSettings {
 		String ssid = "your-ssid";

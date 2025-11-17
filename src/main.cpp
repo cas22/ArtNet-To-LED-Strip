@@ -160,8 +160,8 @@ void onEvent(arduino_event_id_t event)
 	switch (event)
 	{
 	case ARDUINO_EVENT_ETH_START:
-		Serial.println("[ETH] Started");
-		ETH.setHostname(hostName);
+		Serial.println("[ETH] Started " + String(hostName));
+		ETH.setHostname(hostName.c_str());
 		break;
 	case ARDUINO_EVENT_ETH_CONNECTED:
 		Serial.println("[ETH] Connected");
@@ -305,7 +305,7 @@ void loadSettings() {
         Settings.dataPin = preferences.getInt("data-pin", Settings.dataPin);
 		Settings.groupLED = preferences.getInt("group-led", Settings.groupLED);
 		Settings.startUniverse = preferences.getInt("start-universe", Settings.startUniverse);
-		hostName = preferences.getString("host-name", hostName).c_str();
+		hostName = preferences.getString("host-name", hostName);
 		#ifndef HAS_ETH
 			WiFiSettings.ssid = preferences.getString("wifi-ssid", WiFiSettings.ssid);
 			WiFiSettings.pwd = preferences.getString("wifi-pwd", WiFiSettings.pwd);
@@ -330,7 +330,7 @@ void saveSettings() {
     preferences.putInt("data-pin", Settings.dataPin);
 	preferences.putInt("group-led", Settings.groupLED);
     preferences.putInt("start-universe", Settings.startUniverse);
-	preferences.putString("host-name", String(hostName));
+	preferences.putString("host-name", hostName);
 
 	#ifndef HAS_ETH
 		preferences.putString("wifi-ssid", WiFiSettings.ssid);
