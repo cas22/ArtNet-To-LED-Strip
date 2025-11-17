@@ -155,8 +155,8 @@ void onEvent(arduino_event_id_t event)
 	switch (event)
 	{
 	case ARDUINO_EVENT_ETH_START:
-		Serial.println("[ETH] Started");
-		ETH.setHostname(hostName);
+		Serial.println("[ETH] Started " + hostName);
+		ETH.setHostname(hostName.c_str());
 		break;
 	case ARDUINO_EVENT_ETH_CONNECTED:
 		Serial.println("[ETH] Connected");
@@ -187,7 +187,7 @@ void setup_network()
 	WiFi.begin(WiFiSettings.ssid, WiFiSettings.pwd);
 	Serial.println("[WiFi] Config");
 	WiFi.config(WiFiSettings.ip, WiFiSettings.gateway, WiFiSettings.subnet_mask);
-	WiFi.setHostname(hostName);
+	WiFi.setHostname(hostName.c_str());
 	while (WiFi.status() != WL_CONNECTED)
 	{
 		delay(500);
@@ -300,7 +300,10 @@ void loadSettings() {
         Settings.dataPin = preferences.getInt("data-pin", Settings.dataPin);
 		Settings.groupLED = preferences.getInt("group-led", Settings.groupLED);
 		Settings.startUniverse = preferences.getInt("start-universe", Settings.startUniverse);
-		hostName = preferences.getString("host-name", hostName).c_str();
+		hostName = preferences.getString("host-name", hostName);
+		ArtNetSettings.longName = preferences.getString("long-Name", ArtNetSettings.longName);
+		ArtNetSettings.shortName = preferences.getString("short-Name", ArtNetSettings.shortName);
+		ArtNetSettings.nodeReport = preferences.getString("node-Report", ArtNetSettings.nodeReport);
 		#ifndef HAS_ETH
 			WiFiSettings.ssid = preferences.getString("wifi-ssid", WiFiSettings.ssid);
 			WiFiSettings.pwd = preferences.getString("wifi-pwd", WiFiSettings.pwd);
@@ -325,7 +328,10 @@ void saveSettings() {
     preferences.putInt("data-pin", Settings.dataPin);
 	preferences.putInt("group-led", Settings.groupLED);
     preferences.putInt("start-universe", Settings.startUniverse);
-	preferences.putString("host-name", String(hostName));
+	preferences.putString("host-name", hostName);
+	preferences.putString("long-Name", ArtNetSettings.longName);
+	preferences.putString("short-Name", ArtNetSettings.shortName);
+	preferences.putString("node-Report", ArtNetSettings.nodeReport);
 
 	#ifndef HAS_ETH
 		preferences.putString("wifi-ssid", WiFiSettings.ssid);
