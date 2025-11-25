@@ -9,7 +9,7 @@
 		version_url: The URL where we can find the file which contains the current version of the firmware located
 						on the OTA server, which is used to check if the ESP needs to be updated
 */
-#define BASE_URL "http://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
+#define BASE_URL "https://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
 struct OTADeviceSettings {
 	String firmware_url = BASE_URL "/firmware.bin";
 	String version_url = BASE_URL "/version.txt";
@@ -76,15 +76,17 @@ DeviceSettings Settings;
 */
 
 String hostName = "ESP_ArtNet";
-#ifndef HAS_ETH
-	struct WiFiDeviceSettings {
-		String ssid = "your-ssid";
-		String pwd = "your-password";
 
-		IPAddress ip = IPAddress(192, 168, 1, 222);
-		IPAddress gateway = IPAddress(192, 168, 1, 1);
-		IPAddress subnet_mask = IPAddress(255, 255, 255, 0);
-	};
-	WiFiDeviceSettings WiFiSettings;
-#endif
+struct WiFiDeviceSettings {
+	String ssid = "-";
+	String pwd = "-";
+
+	IPAddress ip = IPAddress(192, 168, 1, 222);
+	IPAddress gateway = IPAddress(192, 168, 1, 1);
+	IPAddress subnet_mask = IPAddress(255, 255, 255, 0);
+	
+	bool dhcpEnabled = false;
+};
+WiFiDeviceSettings WiFiSettings;
+
 #endif

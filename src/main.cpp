@@ -21,25 +21,14 @@ void onArtNetFrame(const uint8_t *data, const uint16_t size, const art_net::art_
 	}
 	strip->Show();
 
-	#ifdef DEBUG
-	// Calculate FPS
 	frameTime = millis() - lastTime;
 	frames++;
 
 	if (frameTime >= 1000) { // After 1 second, print the FPS
-		float fps = frames / (frameTime / 1000.0);
-		Serial.print("\nFPS: ");
-		Serial.println(fps);
-		if(fps>=40.0){
-			digitalWrite(2, HIGH);
-		} else {
-			digitalWrite(2, LOW);
-		}
-		// Reset for next measurement period
+		fps = frames / (frameTime / 1000.0);
 		frames = 0;
 		lastTime = millis();
 	}
-	#endif
 }
 
 void onArtNetFrameGroup(const uint8_t *data, const uint16_t size, const art_net::art_dmx::Metadata &metadata, const art_net::RemoteInfo &remote)
@@ -65,8 +54,50 @@ void setup()
 	delay(5000);
 	Serial.println("[Info] DEBUG ON");
 	#endif
-
 	Serial.println("[Info] Current version: " + String(VERSION));
+
+	Serial.println("\n--- Memory Info ---");
+
+	// --- Internal RAM (Heap) ---
+	uint32_t totalHeap = ESP.getHeapSize();
+	uint32_t freeHeap = ESP.getFreeHeap();
+
+	Serial.println("--- Internal RAM (Heap) ---");
+	// Print Total Heap in Bytes, KB, and MB
+	Serial.printf("Total: %u bytes | %.2f KB | %.2f MB\n",
+					totalHeap,
+					totalHeap / 1024.0,
+					totalHeap / (1024.0 * 1024.0));
+
+	// Print Free Heap in Bytes, KB, and MB
+	Serial.printf("Free:  %u bytes | %.2f KB | %.2f MB\n",
+					freeHeap,
+					freeHeap / 1024.0,
+					freeHeap / (1024.0 * 1024.0));
+
+	// --- PSRAM (if available) ---
+	if (psramFound()) {
+		uint32_t totalPsram = ESP.getPsramSize();
+		uint32_t freePsram = ESP.getFreePsram();
+
+		Serial.println("\n--- PSRAM Info ---");
+		// Print Total PSRAM in Bytes, KB, and MB
+		Serial.printf("Total: %u bytes | %.2f KB | %.2f MB\n",
+					totalPsram,
+					totalPsram / 1024.0,
+					totalPsram / (1024.0 * 1024.0));
+
+		// Print Free PSRAM in Bytes, KB, and MB
+		Serial.printf("Free:  %u bytes | %.2f KB | %.2f MB\n",
+					freePsram,
+					freePsram / 1024.0,
+					freePsram / (1024.0 * 1024.0));
+	} else {
+		Serial.println("\nNo PSRAM found on this board.");
+	}
+
+	Serial.println("-------------------------");
+
 
 	loadSettings();
 
@@ -86,6 +117,137 @@ void setup()
 	Serial.println("\n[OTA] Checking if updates are available");
 	checkAndUpdate();
 
+	// --- Initialize WebSocket Server ---
+	ws.onEvent(onWsEvent);        // Attach the event handler
+	server.addHandler(&ws);       // Add WebSocket handler to the server
+
+	// --- Initialize Web Server ---
+	// Serve the embedded index.html file at the root URL ("/")
+	server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+		// Send the HTML file stored in PROGMEM
+		request->send_P(200, "text/html", index_html);
+	});
+
+	// API: GET /api/settings - Return current settings as JSON
+	server.on("/api/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+		String json = "{";
+		json += "\"numPixels\":" + String(Settings.numPixels) + ",";
+		json += "\"dataPin\":" + String(Settings.dataPin) + ",";
+		json += "\"groupLED\":" + String(Settings.groupLED) + ",";
+		json += "\"startUniverse\":" + String(Settings.startUniverse);
+		json += ",";
+		json += "\"ssid\":\"" + WiFiSettings.ssid + "\",";
+		json += "\"pwd\":\"" + WiFiSettings.pwd + "\",";
+		json += "\"dhcpEnabled\":" + String(WiFiSettings.dhcpEnabled ? "true" : "false") + ",";
+		json += "\"ip\":\"" + WiFiSettings.ip.toString() + "\",";
+		json += "\"gateway\":\"" + WiFiSettings.gateway.toString() + "\",";
+		json += "\"subnet\":\"" + WiFiSettings.subnet_mask.toString() + "\"";
+		json += "}";
+		request->send(200, "application/json", json);
+		Serial.println("[API] GET /api/settings - Settings returned");
+	});
+
+	// API: POST /api/settings - Update settings and save to preferences
+	server.on("/api/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+		// Response will be sent in onBody handler
+	}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+		// Handle JSON body
+		StaticJsonDocument<512> doc;
+		DeserializationError error = deserializeJson(doc, data);
+
+		if (error) {
+			request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+			Serial.println("[API] POST /api/settings - JSON parse error");
+			return;
+		}
+
+		// Update settings from JSON
+		if (doc.containsKey("numPixels")) Settings.numPixels = doc["numPixels"];
+		if (doc.containsKey("dataPin")) Settings.dataPin = doc["dataPin"];
+		if (doc.containsKey("groupLED")) Settings.groupLED = doc["groupLED"];
+		if (doc.containsKey("startUniverse")) Settings.startUniverse = doc["startUniverse"];
+
+		#ifndef HAS_ETH
+			if (doc.containsKey("ssid")) WiFiSettings.ssid = doc["ssid"].as<String>();
+			if (doc.containsKey("pwd")) WiFiSettings.pwd = doc["pwd"].as<String>();
+		#endif
+		
+		if (doc.containsKey("dhcpEnabled")) WiFiSettings.dhcpEnabled = doc["dhcpEnabled"].as<bool>();
+		if (doc.containsKey("ip")) WiFiSettings.ip.fromString(doc["ip"].as<String>());
+		if (doc.containsKey("gateway")) WiFiSettings.gateway.fromString(doc["gateway"].as<String>());
+		if (doc.containsKey("subnet")) WiFiSettings.subnet_mask.fromString(doc["subnet"].as<String>());
+
+		// Save settings to preferences
+		saveSettings();
+
+		request->send(200, "application/json", "{\"status\":\"Settings updated successfully\"}");
+		Serial.println("[API] POST /api/settings - Settings updated and saved");
+	});
+
+	// Start server
+	server.begin();
+	Serial.println("Web server started.");
+
+	// API: GET /api/debug - Return system debug information
+	server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
+		uint32_t freeHeap = ESP.getFreeHeap();
+		uint32_t totalHeap = ESP.getHeapSize();
+		uint32_t freePsram = psramFound() ? ESP.getFreePsram() : 0;
+		uint32_t totalPsram = psramFound() ? ESP.getPsramSize() : 0;
+		
+		// Calculate percentages
+		float ramUsagePercent = ((totalHeap - freeHeap) * 100.0) / totalHeap;
+		float psramUsagePercent = (totalPsram > 0) ? ((totalPsram - freePsram) * 100.0) / totalPsram : 0;
+		
+		// Get Flash info (simplified)
+		uint32_t sketchSize = ESP.getSketchSize();
+		uint32_t freeSketchSpace = ESP.getFreeSketchSpace();
+		float flashUsagePercent = (sketchSize * 100.0) / (sketchSize + freeSketchSpace);
+		
+		// Build JSON response
+		String json = "{";
+		json += "\"fps\":" + String(fps) + ",";
+		json += "\"version\":\"" + String(VERSION) + "\",";
+		
+		// RAM Usage
+		char ramBuf[50];
+		snprintf(ramBuf, sizeof(ramBuf), "%.1f%%", ramUsagePercent);
+		json += "\"ram_usage\":\"" + String(ramBuf) + "\",";
+		
+		// PSRAM Usage
+		char psramBuf[50];
+		if (psramFound()) {
+			snprintf(psramBuf, sizeof(psramBuf), "%.1f%%", psramUsagePercent);
+		} else {
+			snprintf(psramBuf, sizeof(psramBuf), "N/A");
+		}
+		json += "\"psram_usage\":\"" + String(psramBuf) + "\",";
+		
+		// Flash Usage
+		char flashBuf[50];
+		snprintf(flashBuf, sizeof(flashBuf), "%.1f%%", flashUsagePercent);
+		json += "\"flash_usage\":\"" + String(flashBuf) + "\",";
+		
+		// MAC Address
+		uint8_t mac[6];
+		esp_read_mac(mac, ESP_MAC_WIFI_STA);
+		char macStr[18];
+		snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", 
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+		json += "\"mac\":\"" + String(macStr) + "\",";
+		
+		// Current IP
+		#ifdef HAS_ETH
+			json += "\"ip\":\"" + String(ETH.localIP().toString()) + "\"";
+		#else
+			json += "\"ip\":\"" + String(WiFi.localIP().toString()) + "\"";
+		#endif
+		
+		json += "}";
+		request->send(200, "application/json", json);
+		Serial.println("[API] GET /api/debug - Debug info returned");
+	});
+
 	Serial.println("\n[ArtNet] setArtPollReplyConfig");
 	artnet.setArtPollReplyConfigShortName(ArtNetSettings.shortName);
 	artnet.setArtPollReplyConfigLongName(ArtNetSettings.longName);
@@ -103,12 +265,13 @@ void setup()
 	}
 	
 
-	Serial.printf("[Info] Free Heap %d out of %d", ESP.getFreeHeap(), ESP.getHeapSize());
+	Serial.printf("[Info] Free Heap %d out of %d\n", ESP.getFreeHeap(), ESP.getHeapSize());
 }
 
 void loop()
 {
 	artnet.parse();
+	ws.cleanupClients();
 }
 
 /*----- LED Strip Helpers -----*/
@@ -157,12 +320,16 @@ void onEvent(arduino_event_id_t event)
 	case ARDUINO_EVENT_ETH_START:
 		Serial.println("[ETH] Started " + hostName);
 		ETH.setHostname(hostName.c_str());
+		if(!WiFiSettings.dhcpEnabled) {
+			ETH.config(WiFiSettings.ip, WiFiSettings.gateway, WiFiSettings.subnet_mask);
+		}
 		break;
 	case ARDUINO_EVENT_ETH_CONNECTED:
 		Serial.println("[ETH] Connected");
 		break;
 	case ARDUINO_EVENT_ETH_GOT_IP:
-		Serial.println("[ETH] Got IP " + String(ETH.localIP()));
+		Serial.print("[ETH] Got IP ");
+		Serial.println(ETH.localIP());
 		eth_connected = true;
 		break;
 	case ARDUINO_EVENT_ETH_DISCONNECTED:
@@ -181,12 +348,13 @@ void onEvent(arduino_event_id_t event)
 void setup_network()
 {
 	uint8_t animBrightness = 0;
-	Serial.print("[WiFi] Begin\n");
+	Serial.print("[WiFi] Begin ");
 	Serial.println(WiFiSettings.ssid);
-	Serial.println(WiFiSettings.pwd);
 	WiFi.begin(WiFiSettings.ssid, WiFiSettings.pwd);
 	Serial.println("[WiFi] Config");
-	WiFi.config(WiFiSettings.ip, WiFiSettings.gateway, WiFiSettings.subnet_mask);
+	if(!WiFiSettings.dhcpEnabled) {
+		WiFi.config(WiFiSettings.ip, WiFiSettings.gateway, WiFiSettings.subnet_mask);
+	}
 	WiFi.setHostname(hostName.c_str());
 	while (WiFi.status() != WL_CONNECTED)
 	{
@@ -287,7 +455,7 @@ void checkAndUpdate()
 	http.end();
 }
 
-/*----- Preferences -----*/
+// ===== Preferences =====
 void loadSettings() {
     preferences.begin("device-config", false);
 
@@ -307,10 +475,11 @@ void loadSettings() {
 		#ifndef HAS_ETH
 			WiFiSettings.ssid = preferences.getString("wifi-ssid", WiFiSettings.ssid);
 			WiFiSettings.pwd = preferences.getString("wifi-pwd", WiFiSettings.pwd);
-			WiFiSettings.ip = IPAddress(preferences.getUInt("wifi-ip", WiFiSettings.ip));
-			WiFiSettings.gateway = IPAddress(preferences.getUInt("wifi-gateway", WiFiSettings.gateway));
-			WiFiSettings.subnet_mask = IPAddress(preferences.getUInt("wifi-subnet", WiFiSettings.subnet_mask));
 		#endif
+		WiFiSettings.ip = IPAddress(preferences.getUInt("wifi-ip", WiFiSettings.ip));
+		WiFiSettings.gateway = IPAddress(preferences.getUInt("wifi-gateway", WiFiSettings.gateway));
+		WiFiSettings.subnet_mask = IPAddress(preferences.getUInt("wifi-subnet", WiFiSettings.subnet_mask));
+		WiFiSettings.dhcpEnabled = preferences.getBool("wifi-dhcp", WiFiSettings.dhcpEnabled);
     } else {
         Serial.println("[Preferences] First run! Using default settings.");
         // Defaults are already set in the structure definition
@@ -336,10 +505,12 @@ void saveSettings() {
 	#ifndef HAS_ETH
 		preferences.putString("wifi-ssid", WiFiSettings.ssid);
 		preferences.putString("wifi-pwd", WiFiSettings.pwd);
-		preferences.putUInt("wifi-ip", (IPAddress)WiFiSettings.ip);
-		preferences.putUInt("wifi-gateway", (IPAddress)WiFiSettings.gateway);
-		preferences.putUInt("wifi-subnet", (IPAddress)WiFiSettings.subnet_mask);
 	#endif
+
+	preferences.putUInt("wifi-ip", (IPAddress)WiFiSettings.ip);
+	preferences.putUInt("wifi-gateway", (IPAddress)WiFiSettings.gateway);
+	preferences.putUInt("wifi-subnet", (IPAddress)WiFiSettings.subnet_mask);
+	preferences.putBool("wifi-dhcp", WiFiSettings.dhcpEnabled);
 
     // Mark as configured after initial save
     preferences.putBool("configured", true); 
@@ -347,4 +518,22 @@ void saveSettings() {
 
     preferences.end();
     Serial.println("[Preferences] Settings saved successfully.");
+}
+
+// ===== WebSocket Event Handler =====
+void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  switch (type) {
+    case WS_EVT_CONNECT:
+      Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+      break;
+    case WS_EVT_DISCONNECT:
+      Serial.printf("WebSocket client #%u disconnected\n", client->id());
+      break;
+    case WS_EVT_DATA:
+      break;
+    case WS_EVT_PONG:
+    case WS_EVT_ERROR:
+      // Handle errors
+      break;
+  }
 }

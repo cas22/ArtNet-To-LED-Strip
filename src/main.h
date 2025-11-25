@@ -7,12 +7,30 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <Preferences.h>
+#include <esp_mac.h>
+
+#include <NetworkManager.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <ArduinoJson.h>
+
 #include <const.h>
+#include <website.h>
+
 
 // NeoPixelBus pointer (will be initialized later)
 NeoPixelBus<RGB_ORDER, STRIP_TYPE>* strip;
 
 Preferences preferences;
+
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+
+// Initialization of variables for FPS calculation
+unsigned long lastTime = 0;
+unsigned long frameTime = 0;
+unsigned long frames = 0;
+float fps;
 
 // Conditional setup depending on the enviroment
 #ifdef HAS_ETH
@@ -40,10 +58,6 @@ void setup_network();
 void loadSettings();
 void saveSettings();
 
-#ifdef DEBUG
-    unsigned long lastTime = 0;
-    unsigned long frameTime = 0;
-    unsigned long frames = 0;
-#endif
+void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
 
 #endif // MAIN_H

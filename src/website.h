@@ -1,0 +1,796 @@
+#include <main.h>
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArtNet LED Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --bg: #f9fafb;
+            --border: #e5e7eb;
+            --white: #ffffff;
+        }
+        
+        html, body {
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+        }
+        
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Navigation Bar */
+        .navbar {
+            background-color: var(--white);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .navbar-nav {
+            display: flex;
+            gap: 24px;
+            list-style: none;
+        }
+        
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.3s;
+            border: none;
+            background: none;
+            color: var(--text-light);
+        }
+        
+        .nav-link:hover {
+            color: var(--primary);
+            background-color: #f3f4f6;
+        }
+        
+        .nav-link.active {
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
+        }
+        
+        /* Main Content */
+        .main-container {
+            flex: 1;
+            padding: 32px 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .page {
+            display: none;
+        }
+        
+        .page.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Page Header */
+        .page-header {
+            margin-bottom: 32px;
+        }
+        
+        .page-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .page-header p {
+            color: var(--text-light);
+            font-size: 14px;
+        }
+        
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        
+        .stat-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s;
+        }
+        
+        .stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-light);
+            margin-bottom: 12px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.good { background-color: var(--success); }
+        .status-indicator.warning { background-color: var(--warning); }
+        .status-indicator.danger { background-color: var(--danger); }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Forms */
+        .form-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        
+        .form-section {
+            margin-bottom: 32px;
+        }
+        
+        .form-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+            background-color: var(--white);
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        input:disabled {
+            background-color: #f9fafb;
+            color: var(--text-light);
+            cursor: not-allowed;
+        }
+        
+        .form-helper {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+        
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        
+        .checkbox-wrapper {
+            position: relative;
+            display: inline-flex;
+        }
+        
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+        
+        .checkbox-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+            cursor: pointer;
+            margin: 0;
+        }
+        
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: var(--white);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background-color: #f3f4f6;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background-color: #f9fafb;
+        }
+        
+        /* Status Message */
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            border-left: 4px solid transparent;
+        }
+        
+        .status-message.success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border-left-color: var(--success);
+            display: block;
+        }
+        
+        .status-message.error {
+            background-color: #fee2e2;
+            color: #7f1d1d;
+            border-left-color: var(--danger);
+            display: block;
+        }
+        
+        .status-message.loading {
+            background-color: #dbeafe;
+            color: #1e3a8a;
+            border-left-color: var(--primary);
+            display: block;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid currentColor;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .navbar {
+                flex-direction: column;
+                height: auto;
+                gap: 16px;
+                padding: 12px;
+            }
+            
+            .navbar-nav {
+                width: 100%;
+                justify-content: space-around;
+            }
+            
+            .main-container {
+                padding: 16px;
+            }
+            
+            .page-header h1 {
+                font-size: 22px;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <div class="navbar">
+        <a class="navbar-brand" href="#"><img src="example.com" alt="logo" style="height:28px; vertical-align:middle;">&nbsp;ArtNet LED</a>
+        <ul class="navbar-nav">
+            <li><button class="nav-link" data-page="dashboardPage" onclick="window.showPage('dashboardPage')">Dashboard</button></li>
+            <li><button class="nav-link" data-page="settingsPage" onclick="window.showPage('settingsPage')">Settings</button></li>
+        </ul>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Title Page -->
+        <div id="titlePage" class="page">
+            <div class="title-container" style="text-align:center; padding:48px 0;">
+                <div style="font-size:72px; line-height:1;"><img src="example.com" alt="logo" style="height:72px; display:inline-block;"></div>
+                <h2 style="font-size:28px; margin-top:12px;">ArtNet LED Controller</h2>
+                <p style="color:var(--text-light); margin-top:8px;">Manage your device settings and monitor performance</p>
+                <div style="margin-top:24px; display:flex; gap:12px; justify-content:center;">
+                    <button class="btn-primary" onclick="window.showPage('dashboardPage')">Go to Dashboard</button>
+                    <button class="btn-secondary" onclick="window.showPage('settingsPage')">Open Settings</button>
+                </div>
+            </div>
+        </div>
+        <!-- Dashboard Page -->
+        <div id="dashboardPage" class="page">
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                <p>Real-time system information and performance metrics</p>
+            </div>
+            
+            <div class="dashboard-grid">
+                <div class="stat-card">
+                    <div class="stat-label">FPS</div>
+                    <div class="stat-value">
+                        <span class="status-indicator good" id="fpsIndicator"></span>
+                        <span id="fpsValue">--</span>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Version</div>
+                    <div class="stat-value" id="versionValue">--</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">RAM Usage</div>
+                    <div class="stat-value" id="ramValue">--</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">PSRAM Usage</div>
+                    <div class="stat-value" id="psramValue">--</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">MAC Address</div>
+                    <div class="stat-value" id="macValue" style="font-size: 16px;">--</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Current IP</div>
+                    <div class="stat-value" id="ipValue">--</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Flash Usage</div>
+                    <div class="stat-value" id="flashValue">--</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Settings Page -->
+        <div id="settingsPage" class="page">
+            <div class="page-header">
+                <h1>Settings</h1>
+                <p>Configure your ArtNet LED Controller</p>
+            </div>
+            
+            <div class="form-card">
+                <div id="statusMessage" class="status-message"></div>
+                
+                <form id="settingsForm">
+                    <!-- LED Strip Configuration -->
+                    <div class="form-section">
+                        <div class="form-section-title">LED Strip Configuration</div>
+                        
+                        <div class="form-group">
+                            <label for="numPixels">Number of Pixels</label>
+                            <input type="number" id="numPixels" name="numPixels" min="1" max="10000" required>
+                            <div class="form-helper">Total number of addressable LEDs</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="dataPin">Data Pin (GPIO)</label>
+                            <input type="number" id="dataPin" name="dataPin" min="0" max="48" required>
+                            <div class="form-helper">GPIO pin connected to LED data line</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="groupLED">LEDs per DMX Channel</label>
+                            <input type="number" id="groupLED" name="groupLED" min="1" max="100" required>
+                            <div class="form-helper">How many LEDs control per 3 DMX channels</div>
+                        </div>
+                    </div>
+                    
+                    <!-- ArtNet Configuration -->
+                    <div class="form-section">
+                        <div class="form-section-title">ArtNet Configuration</div>
+                        
+                        <div class="form-group">
+                            <label for="startUniverse">Start Universe</label>
+                            <input type="number" id="startUniverse" name="startUniverse" min="0" max="32767" required>
+                            <div class="form-helper">First ArtNet universe (0 is the first)</div>
+                        </div>
+                    </div>
+                    
+                    <!-- WiFi/Network Configuration -->
+                    <div class="form-section">
+                        <div class="form-section-title">Network Configuration</div>
+                        
+                        <div class="form-group">
+                            <label for="ssid">WiFi SSID</label>
+                            <input type="text" id="ssid" name="ssid" placeholder="Your network name">
+                            <div class="form-helper">WiFi network name (ESP32 only)</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="pwd">WiFi Password</label>
+                            <input type="password" id="pwd" name="pwd" placeholder="Your network password">
+                            <div class="form-helper">WiFi password (ESP32 only)</div>
+                        </div>
+                        
+                        <div class="checkbox-group">
+                            <div class="checkbox-wrapper">
+                                <input type="checkbox" id="dhcpEnabled" name="dhcpEnabled" checked>
+                                <label for="dhcpEnabled" class="checkbox-label">Use DHCP</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="ip">Static IP Address</label>
+                            <input type="text" id="ip" name="ip" placeholder="192.168.1.222" disabled>
+                            <div class="form-helper">Only used when DHCP is disabled</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="gateway">Gateway</label>
+                            <input type="text" id="gateway" name="gateway" placeholder="192.168.1.1" disabled>
+                            <div class="form-helper">Router IP address</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="subnet">Subnet Mask</label>
+                            <input type="text" id="subnet" name="subnet" placeholder="255.255.255.0" disabled>
+                            <div class="form-helper">Network subnet mask</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Buttons -->
+                    <div class="button-group">
+                        <button type="submit" class="btn-primary">Save Settings</button>
+                        <button type="reset" class="btn-secondary">Reset Form</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+        
+        // Global page navigation function
+        window.showPage = function(pageId) {
+            // Hide all pages
+            const pages = document.querySelectorAll('.page');
+            pages.forEach(page => { page.style.display = 'none'; });
+
+            // Clear active state from nav links
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => link.classList.remove('active'));
+
+            // Show requested page
+            const targetPage = document.getElementById(pageId);
+            if (!targetPage) {
+                console.error('Page not found:', pageId);
+                return;
+            }
+            targetPage.style.display = 'block';
+
+            // Mark corresponding nav link active (if any)
+            const activeLink = document.querySelector('.nav-link[data-page="' + pageId + '"]');
+            if (activeLink) activeLink.classList.add('active');
+
+            // Manage dashboard polling
+            if (pageId === 'dashboardPage') {
+                loadDashboardData();
+                startFPSPolling();
+            } else {
+                stopFPSPolling();
+            }
+
+            // Update title to reflect page
+            document.title = 'ArtNet LED Controller' + (pageId === 'dashboardPage' ? ' - Dashboard' : pageId === 'settingsPage' ? ' - Settings' : '');
+        };
+        
+        let fpsPollingInterval = null;
+        
+        function startFPSPolling() {
+            if (fpsPollingInterval) return;
+            console.log('Starting FPS polling');
+            fpsPollingInterval = setInterval(loadDashboardData, 1000);
+        }
+        
+        function stopFPSPolling() {
+            if (fpsPollingInterval) {
+                console.log('Stopping FPS polling');
+                clearInterval(fpsPollingInterval);
+                fpsPollingInterval = null;
+            }
+        }
+        
+        // Load Dashboard Data
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/debug');
+                if (!response.ok) throw new Error('Failed to fetch debug info');
+                
+                const data = await response.json();
+                
+                const fpsValue = (typeof data.fps === 'number') ? data.fps : parseFloat(data.fps) || 0;
+                document.getElementById('fpsValue').textContent = fpsValue.toFixed(1);
+                const fpsIndicator = document.getElementById('fpsIndicator');
+                if (fpsIndicator) {
+                    // Reset to base class then add appropriate state class
+                    fpsIndicator.className = 'status-indicator';
+                    if (fpsValue >= 40) {
+                        fpsIndicator.classList.add('good');
+                    } else if (fpsValue >= 20) {
+                        fpsIndicator.classList.add('warning');
+                    } else {
+                        fpsIndicator.classList.add('danger');
+                    }
+                }
+                
+                document.getElementById('versionValue').textContent = data.version || '--';
+                document.getElementById('ramValue').textContent = data.ram_usage || '--';
+                document.getElementById('psramValue').textContent = data.psram_usage || '--';
+                document.getElementById('macValue').textContent = data.mac || '--';
+                document.getElementById('ipValue').textContent = data.ip || '--';
+                document.getElementById('flashValue').textContent = data.flash_usage || '--';
+            } catch (error) {
+                console.error('Dashboard error:', error);
+            }
+        }
+        
+        // Settings Form
+        const statusMessage = document.getElementById('statusMessage');
+        const settingsForm = document.getElementById('settingsForm');
+        const dhcpCheckbox = document.getElementById('dhcpEnabled');
+        
+        if (settingsForm) {
+            settingsForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveSettings();
+            });
+        }
+        
+        if (dhcpCheckbox) {
+            dhcpCheckbox.addEventListener('change', function(e) {
+                toggleDHCP(e.target.checked);
+            });
+        }
+        
+        function toggleDHCP(enabled) {
+            const ipFields = ['ip', 'gateway', 'subnet'];
+            ipFields.forEach(id => {
+                const field = document.getElementById(id);
+                if (field) {
+                    field.disabled = enabled;
+                    field.style.opacity = enabled ? '0.6' : '1';
+                }
+            });
+        }
+        
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, loading settings');
+            loadSettings();
+            toggleDHCP(document.getElementById('dhcpEnabled')?.checked || false);
+            // Show title (landing) page on first load
+            window.showPage('titlePage');
+        });
+        
+        async function loadSettings() {
+            try {
+                showStatus('Loading settings...', 'loading');
+                const response = await fetch('/api/settings');
+                
+                if (!response.ok) throw new Error('Failed to fetch settings');
+                
+                const data = await response.json();
+                
+                document.getElementById('numPixels').value = data.numPixels || 626;
+                document.getElementById('dataPin').value = data.dataPin || 4;
+                document.getElementById('groupLED').value = data.groupLED || 1;
+                document.getElementById('startUniverse').value = data.startUniverse || 0;
+                document.getElementById('ssid').value = data.ssid || '';
+                document.getElementById('pwd').value = data.pwd || '';
+                document.getElementById('dhcpEnabled').checked = data.dhcpEnabled !== false;
+                document.getElementById('ip').value = data.ip || '';
+                document.getElementById('gateway').value = data.gateway || '';
+                document.getElementById('subnet').value = data.subnet || '';
+                
+                toggleDHCP(document.getElementById('dhcpEnabled').checked);
+                clearStatus();
+            } catch (error) {
+                showStatus('Error loading settings: ' + error.message, 'error');
+                console.error('loadSettings error:', error);
+            }
+        }
+        
+        async function saveSettings() {
+            try {
+                showStatus('Saving settings...', 'loading');
+                
+                const formData = {
+                    numPixels: parseInt(document.getElementById('numPixels').value),
+                    dataPin: parseInt(document.getElementById('dataPin').value),
+                    groupLED: parseInt(document.getElementById('groupLED').value),
+                    startUniverse: parseInt(document.getElementById('startUniverse').value),
+                    ssid: document.getElementById('ssid').value,
+                    pwd: document.getElementById('pwd').value,
+                    dhcpEnabled: document.getElementById('dhcpEnabled').checked,
+                    ip: document.getElementById('ip').value,
+                    gateway: document.getElementById('gateway').value,
+                    subnet: document.getElementById('subnet').value
+                };
+                
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) throw new Error('Failed to save settings');
+                
+                showStatus('Settings saved successfully!', 'success');
+                setTimeout(loadSettings, 1500);
+            } catch (error) {
+                showStatus('Error saving settings: ' + error.message, 'error');
+                console.error('saveSettings error:', error);
+            }
+        }
+        
+        function showStatus(message, type) {
+            if (!statusMessage) return;
+            statusMessage.textContent = '';
+            
+            if (type === 'loading') {
+                const spinner = document.createElement('span');
+                spinner.className = 'spinner';
+                statusMessage.appendChild(spinner);
+            }
+            
+            const text = document.createTextNode(message);
+            statusMessage.appendChild(text);
+            
+            statusMessage.className = 'status-message ' + type;
+        }
+        
+        function clearStatus() {
+            if (statusMessage) {
+                statusMessage.className = 'status-message';
+                statusMessage.textContent = '';
+            }
+        }
+        
+        console.log('Script loaded successfully');
+    </script>
+</body>
+</html>
+)rawliteral";
