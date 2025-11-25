@@ -101,6 +101,26 @@ void setup()
 
 	loadSettings();
 
+	// --- Initialize LittleFS ---
+	Serial.println("\n[LittleFS] Initializing LittleFS");
+	if (!LittleFS.begin(true)) {
+		Serial.println("[LittleFS] Failed to mount LittleFS!");
+		Serial.println("[LittleFS] Attempting to format and remount...");
+		LittleFS.format();
+		if (!LittleFS.begin(true)) {
+			Serial.println("[LittleFS] LittleFS mount failed after format!");
+		}
+	} else {
+		Serial.println("[LittleFS] LittleFS mounted successfully");
+		File root = LittleFS.open("/");
+		File file = root.openNextFile();
+		Serial.println("[LittleFS] Files in LittleFS:");
+		while (file) {
+			Serial.printf("  - %s (%d bytes)\n", file.name(), file.size());
+			file = root.openNextFile();
+		}
+	}
+
 	// NeoPixelBus setup
 	strip = new NeoPixelBus<RGB_ORDER, STRIP_TYPE>(
         Settings.numPixels, 
@@ -113,19 +133,158 @@ void setup()
 	strip->Show();
 
 	setup_network();
+	setup_webserver();
 
-	Serial.println("\n[OTA] Checking if updates are available");
-	checkAndUpdate();
+	Serial.println("\n[ArtNet] setArtPollReplyConfig");
+	artnet.setArtPollReplyConfigShortName(ArtNetSettings.shortName);
+	artnet.setArtPollReplyConfigLongName(ArtNetSettings.longName);
+	artnet.setArtPollReplyConfigNodeReport(ArtNetSettings.nodeReport);
+	stars_ledstrip(200, 10);
 
+	Serial.println("\n[ArtNet] Starting");
+	artnet.begin();
+
+	Serial.println("[ArtNet] Subscribing to Universes");
+	if (Settings.groupLED == 1) {
+		artnet.subscribeArtDmx(onArtNetFrame);
+	} else {
+		artnet.subscribeArtDmx(onArtNetFrameGroup);
+	}
+
+	Serial.printf("[Info] Free Heap %d out of %d\n", ESP.getFreeHeap(), ESP.getHeapSize());
+}
+
+void loop()
+{
+	artnet.parse();
+	ws.cleanupClients();
+}
+
+/*----- Web Server Setup -----*/
+void setup_webserver()
+{
 	// --- Initialize WebSocket Server ---
 	ws.onEvent(onWsEvent);        // Attach the event handler
 	server.addHandler(&ws);       // Add WebSocket handler to the server
 
+	// - 'fw' : firmware binary -> flashed to U_FLASH
+	// - 'fs' : littlefs binary -> flashed to U_SPIFFS
+	server.on(
+		"/flash", HTTP_POST,
+		[](AsyncWebServerRequest *request){
+			// Final response is sent here after upload handlers finish
+			request->send(200, "text/plain", "Upload complete");
+		},
+		[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+			static size_t writtenBytes = 0;
+			Serial.printf("Upload[%s]: index=%u, len=%u, final=%d\n", filename.c_str(), index, len, final);
+
+			if (request->getResponse() != nullptr) {
+				// upload aborted
+				return;
+			}
+
+			if (!index) {
+				// New file starting: reset counter and determine upload type
+				writtenBytes = 0;
+				const AsyncWebParameter *p = request->getParam(asyncsrv::T_name, true, true);
+				if (p == nullptr) {
+					Serial.println("/flash: Missing content-disposition 'name' parameter");
+					request->send(400, "text/plain", "Missing content-disposition 'name' parameter");
+					return;
+				}
+
+				Serial.printf("/flash: upload param name=%s filename=%s\n", p->value().c_str(), filename.c_str());
+
+			if (p->value() == "fs") {
+				Serial.println("/flash: starting LittleFS (U_SPIFFS) update...");
+				Serial.printf("[LittleFS] Partition info before flash:\n");
+				Serial.printf("  Free sketch space: %u bytes\n", ESP.getFreeSketchSpace());
+				Serial.printf("  Sketch size: %u bytes\n", ESP.getSketchSize());
+				if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
+					Serial.println("/flash: Update.begin(U_SPIFFS) failed");
+					Update.printError(Serial);
+					request->send(400, "text/plain", "Update begin failed for filesystem");
+					return;
+				}
+				} else if (p->value() == "fw") {
+					Serial.println("/flash: starting firmware (U_FLASH) update...");
+					if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+						Serial.println("/flash: Update.begin(U_FLASH) failed");
+						Update.printError(Serial);
+						request->send(400, "text/plain", "Update begin failed for firmware");
+						return;
+					}
+				} else {
+					Serial.printf("/flash: Unknown upload type: %s\n", p->value().c_str());
+					request->send(400, "text/plain", "Unknown upload type");
+					return;
+				}
+			}
+
+		// Write incoming chunk
+		if (len) {
+			size_t written = Update.write(data, len);
+			writtenBytes += written;
+			if (written != len) {
+				Serial.printf("/flash: Update.write mismatch (%u != %u)\n", (unsigned)written, (unsigned)len);
+				Update.printError(Serial);
+				Update.end();
+				request->send(400, "text/plain", "Update write failed");
+				return;
+			}
+		}
+
+		// Finalize this content-disposition
+		if (final) {
+			Serial.printf("/flash: finalizing upload, total written: %u bytes\n", (unsigned)writtenBytes);
+			if (!Update.end(true)) {
+				Serial.println("/flash: Update.end failed");
+				Update.printError(Serial);
+				request->send(400, "text/plain", "Update end failed");
+				return;
+			}
+
+			if (!Update.isFinished()) {
+				Serial.println("/flash: Update finished but not marked as finished");
+				request->send(500, "text/plain", "Update not finished");
+				return;
+			}
+
+			Serial.printf("/flash: Upload success of file %s (written %u bytes)\n", filename.c_str(), (unsigned)writtenBytes);
+			// If this was a firmware upload, the new firmware will run after reboot.
+			// Reload LittleFS if filesystem was updated
+			if (filename.indexOf("littlefs") >= 0 || filename.indexOf("spiffs") >= 0) {
+				Serial.println("[LittleFS] Filesystem updated; remounting LittleFS...");
+				LittleFS.end();
+				delay(100);
+				if (LittleFS.begin()) {
+					Serial.println("[LittleFS] Remounted successfully after update");
+				} else {
+					Serial.println("[LittleFS] Failed to remount after filesystem update");
+				}
+			}
+		}
+	}
+);
+
+	// Reboot endpoint to allow the web UI to request a device restart after flashing
+	server.on("/reboot", HTTP_POST, [](AsyncWebServerRequest *request){
+		Serial.println("/reboot: Reboot requested via web UI");
+		request->send(200, "text/plain", "Rebooting");
+		delay(100);
+		ESP.restart();
+	});
+
 	// --- Initialize Web Server ---
-	// Serve the embedded index.html file at the root URL ("/")
+	// Serve the index.html file from LittleFS at the root URL ("/")
 	server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-		// Send the HTML file stored in PROGMEM
-		request->send_P(200, "text/html", index_html);
+		request->send(LittleFS, "/index.html", "text/html");
+	});
+
+	// Serve logo.png from LittleFS
+	server.on("/logo.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+		request->send(LittleFS, "/logo.png", "image/png");
 	});
 
 	// API: GET /api/settings - Return current settings as JSON
@@ -228,9 +387,15 @@ void setup()
 		snprintf(flashBuf, sizeof(flashBuf), "%.1f%%", flashUsagePercent);
 		json += "\"flash_usage\":\"" + String(flashBuf) + "\",";
 		
-		// MAC Address
+		// MAC Address - Use the correct MAC based on active interface
 		uint8_t mac[6];
-		esp_read_mac(mac, ESP_MAC_WIFI_STA);
+		#ifdef HAS_ETH
+			// For Ethernet devices, read ETH MAC
+			esp_read_mac(mac, ESP_MAC_ETH);
+		#else
+			// For WiFi-only devices, read WiFi STA MAC
+			esp_read_mac(mac, ESP_MAC_WIFI_STA);
+		#endif
 		char macStr[18];
 		snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", 
 			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -247,31 +412,6 @@ void setup()
 		request->send(200, "application/json", json);
 		Serial.println("[API] GET /api/debug - Debug info returned");
 	});
-
-	Serial.println("\n[ArtNet] setArtPollReplyConfig");
-	artnet.setArtPollReplyConfigShortName(ArtNetSettings.shortName);
-	artnet.setArtPollReplyConfigLongName(ArtNetSettings.longName);
-	artnet.setArtPollReplyConfigNodeReport(ArtNetSettings.nodeReport);
-	stars_ledstrip(200, 10);
-
-	Serial.println("\n[ArtNet] Starting");
-	artnet.begin();
-
-	Serial.println("[ArtNet] Subscribing to Universes");
-	if (Settings.groupLED == 1) {
-		artnet.subscribeArtDmx(onArtNetFrame);
-	} else {
-		artnet.subscribeArtDmx(onArtNetFrameGroup);
-	}
-	
-
-	Serial.printf("[Info] Free Heap %d out of %d\n", ESP.getFreeHeap(), ESP.getHeapSize());
-}
-
-void loop()
-{
-	artnet.parse();
-	ws.cleanupClients();
 }
 
 /*----- LED Strip Helpers -----*/
@@ -375,6 +515,7 @@ void checkAndUpdate()
 {
 	HTTPClient http;
 	// Step 1: Check version
+	Serial.println("[OTA] Checking version at: " + OTASettings.version_url);
 	http.begin(OTASettings.version_url);
 	int versionCode = http.GET();
 	if (versionCode == HTTP_CODE_OK)
@@ -399,12 +540,15 @@ void checkAndUpdate()
 	else
 	{
 		Serial.println("[OTA] Failed to fetch version info. HTTP Code: " + String(versionCode));
+		Serial.println("[OTA] HTTP error: " + http.errorToString(versionCode));
+
 		http.end();
 		return;
 	}
 	http.end();
 
 	// Step 2: Get Firmware
+	Serial.println("[OTA] Fetching firmware from: " + OTASettings.firmware_url);
 	http.begin(OTASettings.firmware_url);
 	int httpCode = http.GET();
 
@@ -451,6 +595,9 @@ void checkAndUpdate()
 	else
 	{
 		Serial.println("[OTA] Firmware not available. HTTP Code: " + String(httpCode));
+		#ifdef HTTP_CODE
+		Serial.println("[OTA] HTTP error: " + http.errorToString(httpCode));
+		#endif
 	}
 	http.end();
 }

@@ -8,6 +8,8 @@
 #include <Update.h>
 #include <Preferences.h>
 #include <esp_mac.h>
+#include <LittleFS.h>
+#include <FS.h>
 
 #include <NetworkManager.h>
 #include <AsyncTCP.h>
@@ -15,7 +17,6 @@
 #include <ArduinoJson.h>
 
 #include <const.h>
-#include <website.h>
 
 
 // NeoPixelBus pointer (will be initialized later)
@@ -54,6 +55,7 @@ void fill_ledstrip(RgbColor color);
 void stars_ledstrip(uint8_t colorMax, uint8_t starFrequency);
 
 void setup_network();
+void setup_webserver();
 
 void loadSettings();
 void saveSettings();

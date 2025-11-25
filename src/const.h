@@ -9,7 +9,7 @@
 		version_url: The URL where we can find the file which contains the current version of the firmware located
 						on the OTA server, which is used to check if the ESP needs to be updated
 */
-#define BASE_URL "https://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/refs/heads/main/builds/" ENV_NAME
+#define BASE_URL "https://raw.githubusercontent.com/cas22/ArtNet-To-LED-Strip/main/builds/" ENV_NAME
 struct OTADeviceSettings {
 	String firmware_url = BASE_URL "/firmware.bin";
 	String version_url = BASE_URL "/version.txt";

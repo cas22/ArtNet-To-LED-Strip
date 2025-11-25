@@ -1,6 +1,3 @@
-#include <main.h>
-
-const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -415,10 +412,11 @@ const char index_html[] PROGMEM = R"rawliteral(
 <body>
     <!-- Navigation Bar -->
     <div class="navbar">
-        <a class="navbar-brand" href="#"><img src="example.com" alt="logo" style="height:28px; vertical-align:middle;">&nbsp;ArtNet LED</a>
+        <a class="navbar-brand" href="#"><img src="/logo.png" alt="logo" style="height:28px; vertical-align:middle;">&nbsp;ArtNet LED</a>
         <ul class="navbar-nav">
             <li><button class="nav-link" data-page="dashboardPage" onclick="window.showPage('dashboardPage')">Dashboard</button></li>
             <li><button class="nav-link" data-page="settingsPage" onclick="window.showPage('settingsPage')">Settings</button></li>
+            <li><button class="nav-link" data-page="uploadPage" onclick="window.showPage('uploadPage')">Update</button></li>
         </ul>
     </div>
     
@@ -427,7 +425,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <!-- Title Page -->
         <div id="titlePage" class="page">
             <div class="title-container" style="text-align:center; padding:48px 0;">
-                <div style="font-size:72px; line-height:1;"><img src="example.com" alt="logo" style="height:72px; display:inline-block;"></div>
+                <div style="font-size:72px; line-height:1;"><img src="/logo.png" alt="logo" style="height:72px; display:inline-block;"></div>
                 <h2 style="font-size:28px; margin-top:12px;">ArtNet LED Controller</h2>
                 <p style="color:var(--text-light); margin-top:8px;">Manage your device settings and monitor performance</p>
                 <div style="margin-top:24px; display:flex; gap:12px; justify-content:center;">
@@ -579,6 +577,54 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </form>
             </div>
         </div>
+
+        <!-- Upload Page -->
+        <div id="uploadPage" class="page">
+            <div class="page-header">
+                <h1>Update</h1>
+                <p>Upload firmware and LittleFS images to the device</p>
+            </div>
+
+            <div class="form-card">
+                <div id="uploadStatus" class="status-message" style="display:none;"></div>
+
+                <form id="uploadForm">
+                    <div class="form-section">
+                        <div class="form-section-title">Firmware</div>
+                        <div class="form-group">
+                            <label for="fwFile">Firmware (.bin)</label>
+                            <input type="file" id="fwFile" name="fw" accept=".bin">
+                            <div class="form-helper">Select the PlatformIO firmware binary (firmware.bin)</div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="form-section-title">Filesystem</div>
+                        <div class="form-group">
+                            <label for="fsFile">LittleFS Image (.bin)</label>
+                            <input type="file" id="fsFile" name="fs" accept=".bin">
+                            <div class="form-helper">Select the LittleFS image (littlefs.bin)</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label><input type="checkbox" id="rebootAfter" /> Reboot after upload</label>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn-primary">Upload</button>
+                        <button type="reset" class="btn-secondary">Clear</button>
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <progress id="uploadProgress" value="0" max="100" style="width:100%; display:none;"></progress>
+                    </div>
+                </form>
+
+                <p class="form-helper" style="margin-top:12px;">Note: Upload will write the filesystem partition and/or firmware. After successful firmware upload you must reboot the device to run the new firmware (or check the 'Reboot after upload' box).</p>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -788,9 +834,98 @@ const char index_html[] PROGMEM = R"rawliteral(
                 statusMessage.textContent = '';
             }
         }
-        
+
+        // Upload form handling (multipart upload to /flash)
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const uploadProgress = document.getElementById('uploadProgress');
+
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                handleUpload();
+            });
+        }
+
+        function showUploadMessage(msg, type) {
+            if (!uploadStatus) return;
+            uploadStatus.textContent = '';
+            if (type === 'loading') {
+                const spinner = document.createElement('span');
+                spinner.className = 'spinner';
+                uploadStatus.appendChild(spinner);
+            }
+            uploadStatus.appendChild(document.createTextNode(msg));
+            uploadStatus.className = 'status-message ' + type;
+            uploadStatus.style.display = 'block';
+        }
+
+        function clearUploadMessage() {
+            if (!uploadStatus) return;
+            uploadStatus.style.display = 'none';
+            uploadStatus.className = 'status-message';
+            uploadStatus.textContent = '';
+        }
+
+        function handleUpload() {
+            clearUploadMessage();
+            const fwFile = document.getElementById('fwFile').files[0];
+            const fsFile = document.getElementById('fsFile').files[0];
+            const rebootAfter = document.getElementById('rebootAfter').checked;
+
+            if (!fwFile && !fsFile) {
+                showUploadMessage('Select at least one file to upload', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            if (fwFile) formData.append('fw', fwFile, fwFile.name);
+            if (fsFile) formData.append('fs', fsFile, fsFile.name);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/flash', true);
+
+            xhr.upload.onprogress = function (evt) {
+                if (evt.lengthComputable) {
+                    const pct = Math.round((evt.loaded / evt.total) * 100);
+                    if (uploadProgress) {
+                        uploadProgress.style.display = 'block';
+                        uploadProgress.value = pct;
+                    }
+                }
+            };
+
+            xhr.onload = function () {
+                if (uploadProgress) {
+                    uploadProgress.style.display = 'none';
+                    uploadProgress.value = 0;
+                }
+
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    showUploadMessage('Upload completed successfully.', 'success');
+                    if (rebootAfter) {
+                        showUploadMessage('Rebooting device...', 'loading');
+                        // Try /reboot endpoint if available, otherwise ask user to reboot
+                        fetch('/reboot', { method: 'POST' }).catch(() => {
+                            // No reboot endpoint; instruct user
+                            console.warn('No /reboot endpoint or failed to call it. Please restart the device manually.');
+                        });
+                    }
+                } else {
+                    showUploadMessage('Upload failed: HTTP ' + xhr.status + ' - ' + xhr.statusText, 'error');
+                }
+            };
+
+            xhr.onerror = function () {
+                if (uploadProgress) uploadProgress.style.display = 'none';
+                showUploadMessage('Upload error occurred', 'error');
+            };
+
+            showUploadMessage('Uploading files...', 'loading');
+            xhr.send(formData);
+        }
+
         console.log('Script loaded successfully');
     </script>
 </body>
 </html>
-)rawliteral";
